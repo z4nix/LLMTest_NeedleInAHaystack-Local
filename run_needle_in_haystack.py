@@ -21,7 +21,7 @@ import torch
 import gc
 import pickle
 
-scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
+
 
 class LLMNeedleHaystackTester:
     """
@@ -268,9 +268,24 @@ class LLMNeedleHaystackTester:
         test_end_time = time.time()
         test_elapsed_time = test_end_time - test_start_time
         if len(response) != 0:
-            score = scorer.score(self.needle, response)['rouge1'].fmeasure*10
+            # Tokenize the needle and response
+            needle_words = set(self.needle.lower().split())
+            response_words = set(response.lower().split())
+        
+            # Calculate overlap
+            overlap = needle_words.intersection(response_words)
+            overlap_ratio = len(overlap) / len(needle_words)
+        
+            # Set a minimum acceptable overlap ratio
+            min_overlap_ratio = 0.5  # At least 50% of words must overlap
+            if overlap_ratio < min_overlap_ratio:
+                score = 0  # No score if overlap is too low
+            else:
+                # Scale Rouge score by overlap ratio
+                score = scorer.score(self.needle, response)['rouge1'].fmeasure * 10 * overlap_ratio
         else:
             score = 0.0
+
 
         results = {
             'model' : self.model_name,
