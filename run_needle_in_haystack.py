@@ -264,6 +264,7 @@ class LLMNeedleHaystackTester:
             eos_token_id=[self.enc.eos_token_id, self.enc.encode("\n", add_special_tokens=False)[-1]]
         )
         response = self.enc.decode(output_ids[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
+        rouge_scorer_instance = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
 
         test_end_time = time.time()
         test_elapsed_time = test_end_time - test_start_time
@@ -282,10 +283,11 @@ class LLMNeedleHaystackTester:
                 score = 0  # No score if overlap is too low
             else:
                 # Scale Rouge score by overlap ratio
-                score = scorer.score(self.needle, response)['rouge1'].fmeasure * 10 * overlap_ratio
+                score = rouge_scorer_instance.score(self.needle, response)['rouge1'].fmeasure * 10 * overlap_ratio
         else:
             score = 0.0
 
+        
 
         results = {
             'model' : self.model_name,
