@@ -138,7 +138,7 @@ class LLMNeedleHaystackTester:
                                                                     low_cpu_mem_usage=True,
                                                                     device_map="auto",
                                                                     use_cache=False, 
-                                                                    attn_implementation=attn_implementation
+                                                                    attn_implementation="eager" if attn_implementation == "eager" else attn_implementation
                                                                 )
 
     def logistic(self, x, L=100, x0=50, k=.1):
@@ -186,36 +186,54 @@ class LLMNeedleHaystackTester:
 
 
     def generate_prompt(self, context):
-        # Generate the prompt for the Anthropic model
-        # Replace the following line with the appropriate prompt structure
+        """
+        Generate a refined prompt that explicitly ties the response to the provided document.
+        """
         if self.enc.chat_template is None:
-            prompt=f"<|im_start|> This is a very long story book: <book> {context} </book>.\n Based on the content of the book, Question: {self.retrieval_question}\nAnswer:"
+            # Simple fallback prompt for non-chat models
+            prompt = (
+                f"Document:\n{context}\n\n"
+                f"Question: {self.retrieval_question}\n"
+                f"Answer (based on the document above, the answer is present and should be retrieved):"
+            )
         else:
-            prompt= [
-                {
-                    "role": "system",
-                    "content": "You are a helpful AI bot that answers questions for a user. Keep your response short and direct"
-                },
+            # Refined chat prompt with clear instructions
+            chat_prompt = [
                 {
                     "role": "user",
-                    "content": context
-                    },
-                {
-                    "role": "user",
-                    "content": f"{self.retrieval_question} Don't give information outside the document or repeat your findings. The document definitely contains the answer, and I'm 100% sure. So try your best to find it."
+                    "content": (
+                        f"Here is a document:\n\n{context}\n\n"
+                        "I have a question based on this document. The answer is definitely within the document."
+                    )
                 },
                 {
                     "role": "assistant",
-                    "content":"",
+                    "content": "Understood. I will base my answer only on the provided document."
+                },
+                {
+                    "role": "user",
+                    "content": self.retrieval_question
+                },
+                {
+                    "role": "assistant",
+                    "content": ""  # Placeholder for the assistant's response
                 },
             ]
-
-            prompt = self.enc.apply_chat_template(
-                    prompt,
+    
+            try:
+                prompt = self.enc.apply_chat_template(
+                    chat_prompt,
                     tokenize=False,
                     add_generation_prompt=True
-            )
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Chat template application failed for RecurrentGemma-2b-it: {e}"
+                )
+        
         return prompt
+
+
 
 
 
@@ -241,8 +259,8 @@ class LLMNeedleHaystackTester:
             output_attentions=False,
             max_new_tokens=40,
             num_beams=1,
-            do_sample=False,
-            temperature=1.0,
+            do_sample=True,
+            temperature=0.8,
             eos_token_id=[self.enc.eos_token_id, self.enc.encode("\n", add_special_tokens=False)[-1]]
         )
         response = self.enc.decode(output_ids[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
@@ -442,7 +460,8 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--s_len', metavar='N', type=int, help='a number')
     parser.add_argument('-e', '--e_len', metavar='N', type=int, help='a number')
     parser.add_argument('--model_name', type=str, default=None, help='name of model')
-    parser.add_argument("--attn_implementation", type=str,  default="flash_attention_2", choices=["flash_attention_2", "sdpa", "None"])
+    parser.add_argument("--attn_implementation", type=str, default="flash_attention_2",
+                    choices=["flash_attention_2", "sdpa", "None", "eager"])
     parser.add_argument('--model_version', type=str, default=None, help='provider of model')
     parser.add_argument('--model_name_suffix', type=str, default=None, help='name of model')
     parser.add_argument('--model_provider', type=str, default="LLaMA", help='which model to use')
